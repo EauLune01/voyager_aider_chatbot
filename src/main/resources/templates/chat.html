@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>VoyageAider 1:1 채팅</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #f4f7f6; }
+        #chat-container { display: flex; flex-direction: column; max-width: 800px; margin: 30px auto; border: 1px solid #ccc; border-radius: 8px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: 80vh; }
+        #chat-header { padding: 20px; background: #007bff; color: white; border-radius: 8px 8px 0 0; text-align: center; }
+        #message-area { list-style-type: none; margin: 0; padding: 20px; overflow-y: auto; flex-grow: 1; background: #e9ecef; }
+        .message-bubble { padding: 12px 18px; margin-bottom: 10px; border-radius: 20px; max-width: 70%; word-wrap: break-word; }
+        .message-bubble strong { display: block; margin-bottom: 5px; font-size: 0.9em; color: #333; }
+        .user-message { background-color: #dcf8c6; align-self: flex-end; margin-left: auto; text-align: right; }
+        .ai-message { background-color: #ffffff; align-self: flex-start; margin-right: auto; border: 1px solid #ddd; }
+        #form-container { display: flex; padding: 20px; border-top: 1px solid #ccc; background: #f9f9f9; }
+        #message-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px; margin-right: 10px; }
+        #send-button { padding: 12px 25px; background-color: #007bff; color: white; border: none; border-radius: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="chat-header"><h2>VoyageAider AI 여행 챗봇</h2></div>
+    <ul id="message-area">
+    </ul>
+    <form id="message-form" name="message-form">
+        <div id="form-container">
+            <input type="text" id="message-input" placeholder="여행 질문을 입력하세요..." autocomplete="off"/>
+            <button type="submit" id="send-button">전송</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    const messageForm = document.querySelector('#message-form');
+    const messageInput = document.querySelector('#message-input');
+    const messageArea = document.querySelector('#message-area');
+
+    let stompClient = null;
+    const token = localStorage.getItem('accessToken');
+
+    // 1. 페이지 로드 시 즉시 실행
+    window.onload = function() {
+        if (!token) {
+            alert('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
+            window.location.href = "/";
+            return;
+        }
+
+        // 1-1. (3주차) 과거 채팅 기록 불러오기
+        fetchHistory();
+
+        // 1-2. (2주차) WebSocket 연결
+        connectWebSocket();
+    };
+
+    // 2. (3주차) DB에서 채팅 기록 가져오기
+    async function fetchHistory() {
+        const response = await fetch('/api/chat/history', {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data) {
+                result.data.forEach(message => {
+                    showMessage(message.senderName, message.content);
+                });
+            }
+        } else {
+            console.error('채팅 기록을 불러오는 데 실패했습니다.');
+        }
+    }
+
+    // 3. WebSocket 연결
+    function connectWebSocket() {
+        const socket = new SockJS('/ws'); // 1단계에서 허용한 /ws 엔드포인트
+        stompClient = Stomp.over(socket);
+
+        // (중요) 2단계에서 만든 StompHandler가 이 헤더를 읽음
+        const headers = {
+            'Authorization': 'Bearer ' + token
+        };
+
+        stompClient.connect(headers, onConnected, onError);
+    }
+
+    // 4. 연결 성공 시
+    function onConnected() {
+        console.log('WebSocket 연결 성공!');
+
+        // (중요) 1:1 메시지를 받을 /user/queue/messages 구독
+        // ChatController의 CHAT_DESTINATION과 일치
+        stompClient.subscribe('/user/queue/messages', onMessageReceived);
+    }
+
+    function onError(error) {
+        console.error('WebSocket 연결 실패:', error);
+        alert('채팅 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    // 5. (전송) 폼 제출 시
+    messageForm.addEventListener('submit', sendMessage, true);
+
+    function sendMessage(event) {
+        event.preventDefault();
+        const messageContent = messageInput.value.trim();
+
+        if (messageContent && stompClient) {
+            // (중요) Request DTO 형식에 맞게 JSON 생성
+            const chatMessage = {
+                content: messageContent
+            };
+
+            // (중요) /app/chat.sendMessage (Controller)로 메시지 전송
+            stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
+
+            messageInput.value = '';
+        }
+    }
+
+    // 6. (수신) /user/queue/messages로 메시지가 오면
+    function onMessageReceived(payload) {
+        // (중요) Response DTO 형식에 맞게 JSON 파싱
+        const message = JSON.parse(payload.body);
+
+        showMessage(message.senderName, message.content);
+    }
+
+    // 7. (공통) 메시지를 화면에 그리는 함수
+    function showMessage(sender, content) {
+        const messageElement = document.createElement('li');
+        messageElement.classList.add('message-bubble');
+
+        // 발신자에 따라 CSS 클래스 부여 (USER vs AI)
+        if (sender === "AI") {
+            messageElement.classList.add('ai-message');
+        } else {
+            messageElement.classList.add('user-message');
+        }
+
+        messageElement.innerHTML = `<strong>${sender}</strong>${content}`;
+        messageArea.appendChild(messageElement);
+
+        // 항상 맨 아래로 스크롤
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+</script>
+
+</body>
+</html>

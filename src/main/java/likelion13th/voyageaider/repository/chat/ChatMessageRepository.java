@@ -9,7 +9,6 @@ import java.util.List;
 
 @Repository
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
-
-    // 생성 시간순으로 모든 채팅 정렬해서 가져오기
+    // 특정 User의 모든 채팅 기록을 시간순으로 조회
     List<ChatMessage> findAllByUserOrderByTimestampAsc(User user);
 }

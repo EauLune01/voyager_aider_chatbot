@@ -2,35 +2,141 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>VoyageAider 1:1 채팅</title>
+    <title>여행용 AI 챗봇 서비스</title>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #f4f7f6; }
-        #chat-container { display: flex; flex-direction: column; max-width: 800px; margin: 30px auto; border: 1px solid #ccc; border-radius: 8px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: 80vh; }
-        #chat-header { padding: 20px; background: #007bff; color: white; border-radius: 8px 8px 0 0; text-align: center; }
-        #message-area { list-style-type: none; margin: 0; padding: 20px; overflow-y: auto; flex-grow: 1; background: #e9ecef; }
-        .message-bubble { padding: 12px 18px; margin-bottom: 10px; border-radius: 20px; max-width: 70%; word-wrap: break-word; }
-        .message-bubble strong { display: block; margin-bottom: 5px; font-size: 0.9em; color: #333; }
-        .user-message { background-color: #dcf8c6; align-self: flex-end; margin-left: auto; text-align: right; }
-        .ai-message { background-color: #ffffff; align-self: flex-start; margin-right: auto; border: 1px solid #ddd; }
-        #form-container { display: flex; padding: 20px; border-top: 1px solid #ccc; background: #f9f9f9; }
-        #message-input { flex-grow: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px; margin-right: 10px; }
-        #send-button { padding: 12px 25px; background-color: #007bff; color: white; border: none; border-radius: 20px; cursor: pointer; }
+        /* === PALETTE === */
+        :root{
+            --primary:#7c3aed;     /* Violet 600 */
+            --primary-2:#06b6d4;   /* Cyan 500   */
+            --bg:#f6f7fb;
+            --card:#ffffff;
+            --muted:#eef1f6;
+            --border:#e6e9f0;
+            --text:#343a40;
+            --user-bubble:#e9d5ff; /* Violet 200 */
+            --ai-bubble:#ffffff;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: var(--bg); color: var(--text); }
+        #chat-container {
+            display: flex; flex-direction: column; max-width: 800px; margin: 30px auto;
+            border: 1px solid var(--border); border-radius: 16px; background: var(--card);
+            box-shadow: 0 8px 24px rgba(16,24,40,.06); height: 80vh; overflow: hidden;
+        }
+
+        /* 헤더: 그라데이션 */
+        #chat-header {
+            padding: 22px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+            color: #fff; text-align: center;
+            border-radius: 16px 16px 0 0;
+        }
+        #chat-header h2 { margin: 0; letter-spacing: .2px; }
+
+        /* 메시지 영역 */
+        #message-area {
+            list-style-type: none; margin: 0; padding: 20px; overflow-y: auto; flex-grow: 1;
+            background: var(--muted); display: flex; flex-direction: column; gap: 10px;
+        }
+        .message-bubble {
+            padding: 12px 18px; border-radius: 18px; max-width: 72%; word-wrap: break-word;
+            box-shadow: 0 4px 12px rgba(16,24,40,.04);
+        }
+        .message-bubble strong { display: block; margin-bottom: 6px; font-size: .88em; color: #111827; opacity: .85; }
+        .user-message {
+            background-color: var(--user-bubble);
+            align-self: flex-end; margin-left: auto; text-align: right;
+            border: 1px solid rgba(124,58,237,.18);
+        }
+        .ai-message {
+            background-color: var(--ai-bubble);
+            align-self: flex-start; margin-right: auto;
+            border: 1px solid var(--border);
+        }
+
+        /* 이미지 썸네일 */
+        .thumbs { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .thumbs img {
+            width: 120px; height: 120px; object-fit: cover; border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        /* 로딩 말풍선 점멸 애니메이션 */
+        .dots::after { content: "·  "; display: inline-block; width: 1.5em; text-align: left; animation: blink 1s infinite steps(3, start); }
+        @keyframes blink { 0%{content:"·  ";} 33%{content:"·· ";} 66%{content:"···";} }
+
+        /* 입력 영역 */
+        #form-container {
+            display: grid; grid-template-columns: auto 1fr auto; gap: 12px; padding: 14px 18px;
+            border-top: 1px solid var(--border); background: #fafbff; align-items: center;
+        }
+        /* + 버튼(이미지 첨부) */
+        #add-image-btn {
+            width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--border);
+            background: #fff; font-size: 22px; cursor: pointer; color: var(--primary);
+            box-shadow: 0 2px 8px rgba(16,24,40,.05);
+            transition: transform .06s ease, background .2s ease, border-color .2s ease;
+        }
+        #add-image-btn:hover { background:#f3f0ff; border-color: rgba(124,58,237,.35); }
+        #add-image-btn:active { transform: scale(.98); }
+
+        /* 텍스트 입력 */
+        #message-input {
+            width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+            background: #fff; outline: none;
+            transition: border-color .2s ease, box-shadow .2s ease;
+        }
+        #message-input:focus {
+            border-color: rgba(124,58,237,.5);
+            box-shadow: 0 0 0 4px rgba(124,58,237,.08);
+        }
+
+        /* 전송 버튼 */
+        #send-button {
+            padding: 12px 20px; border: none; border-radius: 12px; cursor: pointer; color: #fff;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+            box-shadow: 0 4px 12px rgba(6,182,212,.24);
+            transition: transform .06s ease, box-shadow .2s ease, filter .2s ease;
+        }
+        #send-button:hover { filter: brightness(1.02); box-shadow: 0 6px 16px rgba(6,182,212,.28); }
+        #send-button:active { transform: translateY(1px); }
+
+        /* 선택한 이미지 미리보기 바 */
+        #selected-preview {
+            display: flex; gap: 8px; padding: 8px 18px 10px; background: #fafbff; border-top: 1px dashed var(--border);
+        }
+        #selected-preview .slot { position: relative; }
+        #selected-preview img {
+            width: 70px; height: 70px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border);
+        }
+        #selected-preview .remove {
+            position: absolute; top: -6px; right: -6px; background: rgba(17,24,39,.75); color: #fff;
+            border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer;
+            font-size: 12px; line-height: 18px; text-align: center;
+        }
+        #selected-preview .count { font-size: 12px; color: #6b7280; align-self: center; }
     </style>
 </head>
 <body>
 
 <div id="chat-container">
-    <div id="chat-header"><h2>VoyageAider AI 여행 챗봇</h2></div>
-    <ul id="message-area">
-    </ul>
+    <div id="chat-header"><h2>여행용 AI 챗봇</h2></div>
+    <ul id="message-area"></ul>
+
+    <!-- 선택한 이미지 미리보기 바 -->
+    <div id="selected-preview"></div>
+
     <form id="message-form" name="message-form">
         <div id="form-container">
+            <button type="button" id="add-image-btn" title="이미지 첨부(최대 3장)">+</button>
             <input type="text" id="message-input" placeholder="여행 질문을 입력하세요..." autocomplete="off"/>
             <button type="submit" id="send-button">전송</button>
         </div>
+        <!-- 숨김 파일 입력 (이미지 전용, 다중 선택) -->
+        <input type="file" id="image-input" accept="image/*" multiple style="display:none;">
     </form>
 </div>
 
@@ -39,64 +145,57 @@
     const messageInput = document.querySelector('#message-input');
     const messageArea = document.querySelector('#message-area');
 
+    const addImageBtn = document.querySelector('#add-image-btn');
+    const imageInput = document.querySelector('#image-input');
+    const selectedPreview = document.querySelector('#selected-preview');
+
+    let selectedFiles = []; // File 객체 배열 (0~3개)
     let stompClient = null;
+    let loadingElement = null; // 현재 표시 중인 AI 로딩 말풍선
     const token = localStorage.getItem('accessToken');
 
-    // 1. 페이지 로드 시 즉시 실행
+    // 최근 내가 보낸 메시지 큐(간단 echo 필터링용)
+    // { content: string, ts: number } 배열
+    const recentUserQueue = [];
+    const ECHO_WINDOW_MS = 8000; // 8초 내 동일 내용 echo 오면 무시
+
     window.onload = function() {
         if (!token) {
             alert('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
             window.location.href = "/";
             return;
         }
-
-        // 1-1. (3주차) 과거 채팅 기록 불러오기
         fetchHistory();
-
-        // 1-2. (2주차) WebSocket 연결
         connectWebSocket();
     };
 
-    // 2. (3주차) DB에서 채팅 기록 가져오기
     async function fetchHistory() {
-        const response = await fetch('/api/chat/history', {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + token
+        try {
+            const res = await fetch('/api/chat/history', {
+                method: 'GET',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (res.ok) {
+                const result = await res.json();
+                if (result.success && result.data) {
+                    result.data.forEach(msg => showMessage(msg.senderName, msg.content, msg.imageUrls));
+                }
+            } else {
+                console.error('채팅 기록 불러오기 실패');
             }
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data) {
-                result.data.forEach(message => {
-                    showMessage(message.senderName, message.content);
-                });
-            }
-        } else {
-            console.error('채팅 기록을 불러오는 데 실패했습니다.');
+        } catch (e) {
+            console.error('채팅 기록 오류:', e);
         }
     }
 
-    // 3. WebSocket 연결
     function connectWebSocket() {
-        const socket = new SockJS('/ws'); // 1단계에서 허용한 /ws 엔드포인트
+        const socket = new SockJS('/ws');
         stompClient = Stomp.over(socket);
-
-        // (중요) 2단계에서 만든 StompHandler가 이 헤더를 읽음
-        const headers = {
-            'Authorization': 'Bearer ' + token
-        };
-
+        const headers = { 'Authorization': 'Bearer ' + token };
         stompClient.connect(headers, onConnected, onError);
     }
 
-    // 4. 연결 성공 시
     function onConnected() {
-        console.log('WebSocket 연결 성공!');
-
-        // (중요) 1:1 메시지를 받을 /user/queue/messages 구독
-        // ChatController의 CHAT_DESTINATION과 일치
         stompClient.subscribe('/user/queue/messages', onMessageReceived);
     }
 
@@ -105,51 +204,226 @@
         alert('채팅 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     }
 
-    // 5. (전송) 폼 제출 시
+    // + 버튼 → 파일 선택
+    addImageBtn.addEventListener('click', () => imageInput.click());
+
+    // 파일 선택 처리
+    imageInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        // 새로 선택한 파일을 기존 선택과 합치되 최대 3장 제한
+        const merged = [...selectedFiles, ...files];
+        if (merged.length > 3) {
+            alert('이미지는 최대 3장까지 첨부할 수 있습니다.');
+        }
+        selectedFiles = merged.slice(0, 3);
+        renderSelectedPreview();
+        // 동일 파일 다시 선택 가능하도록 input 리셋
+        imageInput.value = '';
+    });
+
+    // 선택한 이미지 썸네일 렌더
+    function renderSelectedPreview() {
+        selectedPreview.innerHTML = '';
+        if (selectedFiles.length === 0) return;
+
+        selectedFiles.forEach((file, idx) => {
+            const url = URL.createObjectURL(file);
+            const slot = document.createElement('div');
+            slot.className = 'slot';
+            slot.innerHTML = `
+                <img src="${url}" alt="preview-${idx}">
+                <button type="button" class="remove" title="제거">×</button>
+            `;
+            // 제거 버튼
+            slot.querySelector('.remove').addEventListener('click', () => {
+                selectedFiles.splice(idx, 1);
+                renderSelectedPreview();
+                URL.revokeObjectURL(url);
+            });
+            selectedPreview.appendChild(slot);
+        });
+
+        // 개수 표시
+        const count = document.createElement('div');
+        count.className = 'count';
+        count.textContent = `${selectedFiles.length}/3`;
+        selectedPreview.appendChild(count);
+    }
+
     messageForm.addEventListener('submit', sendMessage, true);
 
-    function sendMessage(event) {
+    async function sendMessage(event) {
         event.preventDefault();
-        const messageContent = messageInput.value.trim();
+        const content = messageInput.value.trim();
+        if (!content || !stompClient) return;
 
-        if (messageContent && stompClient) {
-            // (중요) Request DTO 형식에 맞게 JSON 생성
-            const chatMessage = {
-                content: messageContent
-            };
+        // 1) 사용자 메시지 즉시 표시 (이미지 썸네일까지)
+        const localImageUrls = selectedFiles.length > 0 ? selectedFiles.map(f => URL.createObjectURL(f)) : null;
+        showMessage("나", content, localImageUrls);
 
-            // (중요) /app/chat.sendMessage (Controller)로 메시지 전송
+        // 2) echo 필터 큐
+        recentUserQueue.push({ content, ts: Date.now() });
+        compactRecentQueue();
+
+        // 3) 로딩 말풍선
+        showLoading();
+
+        // 4) 업로드(선택) → WebSocket 전송
+        try {
+            let imageUrls = null;
+            if (selectedFiles.length > 0) {
+                imageUrls = await uploadImagesToS3(selectedFiles);
+            }
+
+            const chatMessage = (imageUrls && imageUrls.length > 0)
+                ? { content, imageUrls }
+                : { content };
+
             stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
-
+        } catch (err) {
+            console.error('전송 중 오류:', err);
+            replaceLoadingWithAI("죄송해요, 전송 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            // ✅ 전송 후 항상 입력/첨부 깨끗하게 초기화
+            messageForm.reset();
             messageInput.value = '';
+            imageInput.value = '';
+            if (localImageUrls) localImageUrls.forEach(u => URL.revokeObjectURL(u));
+            selectedFiles = [];
+            renderSelectedPreview();
+            messageInput.focus();
         }
     }
 
-    // 6. (수신) /user/queue/messages로 메시지가 오면
+    // 이미지 S3 업로드 (서버 API 호출)
+    async function uploadImagesToS3(files) {
+        const form = new FormData();
+        files.forEach(f => form.append('images', f));
+        const res = await fetch('/api/chat/images', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: form
+        });
+        if (!res.ok) {
+            throw new Error('이미지 업로드 실패');
+        }
+        const result = await res.json();
+        if (!result.success || !result.data || !result.data.imageUrls) {
+            throw new Error('이미지 업로드 응답 형식 오류');
+        }
+        return result.data.imageUrls; // 서버가 반환한 S3 URL 배열
+    }
+
     function onMessageReceived(payload) {
-        // (중요) Response DTO 형식에 맞게 JSON 파싱
         const message = JSON.parse(payload.body);
+        const isAI = (message.senderName === "AI");
 
-        showMessage(message.senderName, message.content);
+        if (isAI) {
+            replaceLoadingWithAI(message.content, message.imageUrls);
+        } else {
+            // 사용자 echo 방지: 동일 content가 최근에 있었으면 무시 (이미지 여부는 단순화)
+            if (isRecentEcho(message.content)) return;
+            showMessage(message.senderName, message.content, message.imageUrls);
+        }
     }
 
-    // 7. (공통) 메시지를 화면에 그리는 함수
-    function showMessage(sender, content) {
-        const messageElement = document.createElement('li');
-        messageElement.classList.add('message-bubble');
+    function showMessage(sender, content, imageUrls) {
+        const li = document.createElement('li');
+        li.classList.add('message-bubble', sender === "AI" ? 'ai-message' : 'user-message');
 
-        // 발신자에 따라 CSS 클래스 부여 (USER vs AI)
-        if (sender === "AI") {
-            messageElement.classList.add('ai-message');
-        } else {
-            messageElement.classList.add('user-message');
+        // 텍스트
+        const strong = document.createElement('strong');
+        strong.textContent = sender;
+        li.appendChild(strong);
+
+        const p = document.createElement('div');
+        p.textContent = content;
+        li.appendChild(p);
+
+        // 이미지 썸네일(있으면)
+        if (imageUrls && imageUrls.length > 0) {
+            const wrap = document.createElement('div');
+            wrap.className = 'thumbs';
+            imageUrls.forEach(url => {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = 'image';
+                img.loading = 'lazy';
+                wrap.appendChild(img);
+            });
+            li.appendChild(wrap);
         }
 
-        messageElement.innerHTML = `<strong>${sender}</strong>${content}`;
-        messageArea.appendChild(messageElement);
-
-        // 항상 맨 아래로 스크롤
+        messageArea.appendChild(li);
         messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    function showLoading() {
+        if (loadingElement) {
+            loadingElement.remove();
+            loadingElement = null;
+        }
+        loadingElement = document.createElement('li');
+        loadingElement.classList.add('message-bubble', 'ai-message');
+        loadingElement.innerHTML = `<strong>AI</strong>🤖 AI 챗봇이 답변을 생성 중입니다. 잠시만 기다려주세요<span class="dots"></span>`;
+        messageArea.appendChild(loadingElement);
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    function replaceLoadingWithAI(content, imageUrls) {
+        const html = () => {
+            const container = document.createElement('div');
+            const title = document.createElement('strong');
+            title.textContent = 'AI';
+            container.appendChild(title);
+
+            const p = document.createElement('div');
+            p.textContent = content;
+            container.appendChild(p);
+
+            if (imageUrls && imageUrls.length > 0) {
+                const wrap = document.createElement('div');
+                wrap.className = 'thumbs';
+                imageUrls.forEach(url => {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = 'image';
+                    img.loading = 'lazy';
+                    wrap.appendChild(img);
+                });
+                container.appendChild(wrap);
+            }
+            return container.innerHTML;
+        };
+
+        if (loadingElement) {
+            loadingElement.innerHTML = html();
+            loadingElement = null;
+        } else {
+            showMessage("AI", content, imageUrls);
+        }
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }
+
+    function isRecentEcho(content) {
+        const now = Date.now();
+        const hit = recentUserQueue.some(entry => entry.content === content && now - entry.ts <= ECHO_WINDOW_MS);
+        compactRecentQueue();
+        return hit;
+    }
+
+    function compactRecentQueue() {
+        const now = Date.now();
+        for (let i = recentUserQueue.length - 1; i >= 0; i--) {
+            if (now - recentUserQueue[i].ts > ECHO_WINDOW_MS) {
+                recentUserQueue.splice(i, 1);
+            }
+        }
+        if (recentUserQueue.length > 20) {
+            recentUserQueue.splice(0, recentUserQueue.length - 20);
+        }
     }
 </script>
 

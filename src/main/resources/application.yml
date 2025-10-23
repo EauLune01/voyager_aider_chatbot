@@ -1,6 +1,12 @@
 spring:
     application:
         name: voyageaider
+
+    servlet:
+        multipart:
+            max-file-size: 10MB
+            max-request-size: 20MB
+
     data:
         redis:
             host: ${REDIS_HOST}
@@ -36,23 +42,30 @@ spring:
             api-key: ${OPENAI_API_KEY}
     thymeleaf:
         cache: false
-
 jwt:
     secret: ${JWT_SECRET}
     access-token-validity-in-seconds: ${JWT_ACCESS_VALIDITY}
     refresh-token-validity-in-seconds: ${JWT_REFRESH_VALIDITY}
-
 springdoc:
     swagger-ui:
         persistAuthorization: false
         path: /swagger-ui.html
     api-docs:
         path: /v3/api-docs
-
+cloud:
+    aws:
+        credentials:
+            access-key: ${AWS_ACCESS_KEY_ID}
+            secret-key: ${AWS_SECRET_ACCESS_KEY}
+        s3:
+            bucket: ${AWS_S3_BUCKET}
+        region:
+            static: ap-northeast-2
+        stack:
+            auto: false
 logging:
     level:
         root: info
         org.hibernate.SQL: debug
         org.springframework.ai: debug
         org.springframework.security: DEBUG
-        com.likelion13th.voyageaid.auth.jwt.JwtTokenProvider: DEBUG

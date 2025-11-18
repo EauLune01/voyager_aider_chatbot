@@ -3,10 +3,12 @@ package likelion13th.voyageaider.auth.service;
 import likelion13th.voyageaider.auth.CustomOAuth2User;
 import likelion13th.voyageaider.domain.Role;
 import likelion13th.voyageaider.domain.User;
+import likelion13th.voyageaider.domain.UserStatus;
 import likelion13th.voyageaider.oauth2.GoogleUserInfo;
 import likelion13th.voyageaider.oauth2.OAuth2UserInfo;
 import likelion13th.voyageaider.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -14,6 +16,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
@@ -23,34 +26,48 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     @Override
     @Transactional
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        // 기본 OAuth2User 정보 로드
         OAuth2User oAuth2User = super.loadUser(userRequest);
         String registrationId = userRequest.getClientRegistration().getRegistrationId();
 
-        // 1️⃣ Provider별 유저 정보 파싱
+        // 1. 소셜 토큰 추출 (탈퇴 시 연동 해제용 - 이건 필수라 남김)
+        String providerAccessToken = userRequest.getAccessToken().getTokenValue();
+        String providerRefreshToken = (String) userRequest.getAdditionalParameters().get("refresh_token");
+
+        // 2. 정보 파싱
         OAuth2UserInfo oAuth2UserInfo;
         switch (registrationId) {
             case "google" -> oAuth2UserInfo = new GoogleUserInfo(oAuth2User.getAttributes());
             default -> throw new OAuth2AuthenticationException("Unsupported provider: " + registrationId);
         }
 
-        // 2️⃣ provider & providerId로 DB 조회
         String provider = oAuth2UserInfo.getProvider();
         String providerId = oAuth2UserInfo.getProviderId();
 
-        User user = userRepository.findByProviderAndProviderId(provider, providerId)
-                .orElseGet(() -> saveNewUser(oAuth2UserInfo));
+        // 3. DB 조회 및 처리
+        User user = userRepository.findByProviderAndProviderIdIncludingDeleted(provider, providerId)
+                .map(existingUser -> {
+                    // ✅ 토큰 최신화
+                    existingUser.updateProviderTokens(providerAccessToken, providerRefreshToken);
 
-        // 3️⃣ 즉시 flush (토큰/정보 갱신 반영 보장)
-        userRepository.flush();
+                    // ✅ 탈퇴한 유저라면 복구 (Re-activate)
+                    if (existingUser.getStatus() == UserStatus.DELETED) {
+                        existingUser.reActivate();
+                        // 재가입 시 닉네임은 소셜 정보로 초기화 (프로필 사진 로직 삭제됨)
+                        existingUser.updateName(oAuth2UserInfo.getName());
+                    }
+                    // ACTIVE 유저는 닉네임 변경 안 함 (기존 유지)
 
-        // 4️⃣ CustomOAuth2User로 반환
+                    return userRepository.save(existingUser);
+                })
+                .orElseGet(() -> saveNewUser(oAuth2UserInfo, providerAccessToken, providerRefreshToken));
+
         return new CustomOAuth2User(user, oAuth2UserInfo.getAttributes());
     }
 
-    // 신규 유저 저장
-    private User saveNewUser(OAuth2UserInfo oAuth2UserInfo) {
+    // 요청하신 대로 프로필 사진 없이 딱 이것만!
+    private User saveNewUser(OAuth2UserInfo oAuth2UserInfo, String accessToken, String refreshToken) {
         String username = oAuth2UserInfo.getProvider() + "_" + oAuth2UserInfo.getProviderId();
+
         User newUser = User.builder()
                 .username(username)
                 .name(oAuth2UserInfo.getName())
@@ -58,8 +75,13 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                 .provider(oAuth2UserInfo.getProvider())
                 .providerId(oAuth2UserInfo.getProviderId())
                 .role(Role.ROLE_USER)
+                .providerAccessToken(accessToken)
+                .providerRefreshToken(refreshToken)
+                .status(UserStatus.ACTIVE)
                 .build();
+
         return userRepository.save(newUser);
     }
+
 }
 

@@ -44,8 +44,9 @@
 <hr style="margin: 30px 0; width: 60%;">
 
 <div>
-    <button class="btn action" onclick="reissueToken()">🔄 토큰 재발급</button>
+    <button class="btn action" onclick="reissueTokens()">🔄 토큰 재발급</button>
     <button class="btn action" onclick="logout()">🚪 로그아웃</button>
+    <button class="btn google" onclick="withdrawUser()" style="background-color: #f44336;">🔥 회원 탈퇴</button>
 </div>
 
 <div class="status" id="status"></div>
@@ -61,16 +62,11 @@
       const statusEl = document.getElementById('status');
 
       if (accessToken && refreshToken) {
-
-        // --- ⬇️ (수정된 부분) ⬇️ ---
-        // innerText -> innerHTML로 변경하고 "여행 챗봇 시작하기" 버튼 링크 추가
         statusEl.innerHTML =
           '✅ 로그인 상태\n\n' +
           'Access Token: ' + accessToken.substring(0, 25) + '...\n' +
           'Refresh Token: ' + refreshToken.substring(0, 25) + '...\n\n' +
-          // 3주차 6단계에서 만들 PageController의 /chat 경로로 이동
           '<a href="/chat"><button class="btn action" style="background-color:#007bff;">✈️ 여행 챗봇 시작하기</button></a>';
-        // --- ⬆️ (수정된 부분) ⬆️ ---
 
       } else {
         statusEl.innerText = '🔒 현재 로그아웃 상태입니다.';
@@ -132,6 +128,40 @@
         console.error(err);
         alert('로그아웃 중 오류가 발생했습니다.');
       }
+    }
+
+    // ✅ 회원 탈퇴 (Withdraw) 로직 추가
+    async function withdrawUser() {
+        const accessToken = localStorage.getItem('accessToken');
+        if (!accessToken) {
+            alert('로그인 상태가 아닙니다. 먼저 로그인하세요.');
+            return;
+        }
+
+        if (!confirm('⚠️ 정말로 회원 탈퇴를 하시겠습니까? 계정 정보와 Google 연동이 모두 해제되며, 되돌릴 수 없습니다.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/auth/withdraw', {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + accessToken }
+            });
+
+            // 백엔드에서 204 No Content를 반환하도록 설정했으므로, 204 상태 코드를 확인합니다.
+            if (response.status === 204) {
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                alert('✅ 성공적으로 회원 탈퇴 처리되었습니다. 다음에 또 만나요!');
+                showStatus();
+            } else {
+                const result = await response.json();
+                alert('❌ 회원 탈퇴 실패: ' + (result.message || '서버 오류'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('회원 탈퇴 요청 중 오류가 발생했습니다.');
+        }
     }
 </script>
 

@@ -1,0 +1,42 @@
+
+services:
+  # 1. Redis Stack (Vector DB + Cache)
+  redis:
+    image: redis/redis-stack:latest
+    container_name: voyage-redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    volumes:
+      - ./data/redis:/data
+    environment:
+      - REDIS_ARGS= #
+    # Health Check
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. MySQL
+  mysql:
+    image: mysql:8.0
+    container_name: voyage-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "20200129"
+      MYSQL_DATABASE: "voyager"
+
+      TZ: Asia/Seoul
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    # ⭐ Health Check
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p20200129"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

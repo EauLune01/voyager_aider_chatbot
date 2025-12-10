@@ -5,24 +5,32 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
-@Service
+import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY;
+import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY;
+
+@Service // ⭐ 핵심: 이게 있어야 ChatService에서 주입받을 수 있음!
 @RequiredArgsConstructor
 public class AIService {
 
-    private final ChatClient chatClient;   // ⬅️ 텍스트만 사용
+    private final ChatClient chatClient; // AIConfig에서 설정한 ChatClient 주입
 
-    private static final String SYSTEM_PROMPT = """
-        당신은 'VoyageAider'라는 이름의 여행 전문 챗봇입니다.
-        - 여행 관련 질문에 구체적이고 실용적인 답을 제공합니다.
-        - 정치/연예 등 여행과 무관한 질문은 정중히 거절합니다.
-        """;
+    /**
+     * AI에게 질문을 보내고 응답을 받습니다.
+     * @param userId 사용자 식별자 (대화 기억용)
+     * @param userMessage 사용자 질문
+     * @return AIResponse (응답 텍스트)
+     */
+    public AIResponse getAiResponse(String userId, String userMessage) {
 
-    public AIResponse getAiResponse(String userMessage) {
-        final String text = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+        String response = chatClient.prompt()
                 .user(userMessage)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, userId) // 유저별로 대화방 분리
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 10)      // 최근 10개 대화까지만 기억 (비용 절약)
+                )
                 .call()
                 .content();
-        return new AIResponse(text);
+
+        return new AIResponse(response);
     }
 }
